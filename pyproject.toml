@@ -1,0 +1,11 @@
+[project]
+name = "stage-one"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "asyncpg>=0.31.0",
+    "fastapi[standard]>=0.136.0",
+    "sqlalchemy>=2.0.49",
+]
