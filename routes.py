@@ -114,3 +114,15 @@ async def get_profiles(
         "count": len(db_profiles),
         "data": [ProfileResponse.model_validate(profile) for profile in db_profiles],
     }
+
+
+@router.delete("/profiles/{profile_id}", status_code=204)
+async def delete_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
+    db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
+    db_profile = db_profile.scalar_one_or_none()
+
+    if not db_profile:
+        return {"status": "error", "message": "Profile not found"}
+
+    await db.delete(db_profile)
+    await db.commit()
