@@ -8,10 +8,10 @@ from models import Profile
 from utils import AgeGroup
 from db import get_db
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 
-@router.post("/api/profiles", status_code=201)
+@router.post("/profiles", status_code=201)
 async def create_profile(profile: ProfileCreate, db: AsyncSession = Depends(get_db)):
     db_profile = await db.execute(select(Profile).where(Profile.name == profile.name))
     db_profile = db_profile.scalar_one_or_none()
@@ -78,3 +78,39 @@ async def create_profile(profile: ProfileCreate, db: AsyncSession = Depends(get_
 
         except:
             pass
+
+
+@router.get("/profiles/{profile_id}")
+async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db)):
+    db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
+    db_profile = db_profile.scalar_one_or_none()
+
+    if not db_profile:
+        return {"status": "error", "message": "Profile not found"}
+
+    return {"status": "success", "data": ProfileResponse.model_validate(db_profile)}
+
+
+@router.get("/profiles")
+async def get_profiles(
+    db: AsyncSession = Depends(get_db),
+    gender: str | None = None,
+    country_id: str | None = None,
+    age_group: AgeGroup | None = None,
+):
+    query = select(Profile)
+    if gender:
+        query = query.where(Profile.gender == gender)
+    if country_id:
+        query = query.where(Profile.country_id == country_id)
+    if age_group:
+        query = query.where(Profile.age_group == age_group)
+
+    db_profiles = await db.execute(query)
+    db_profiles = db_profiles.scalars().all()
+
+    return {
+        "status": "success",
+        "count": len(db_profiles),
+        "data": [ProfileResponse.model_validate(profile) for profile in db_profiles],
+    }
