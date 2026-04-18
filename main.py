@@ -16,6 +16,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    await engine.dispose()
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -29,9 +31,7 @@ app.add_middleware(
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(
-    request: Request, exc: HTTPException
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={"status": "error", "message": str(exc.detail)},
@@ -49,9 +49,7 @@ async def validation_exception_handler(
 
 
 @app.exception_handler(Exception)
-async def generic_exception_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content={"status": "error", "message": "Internal server error"},

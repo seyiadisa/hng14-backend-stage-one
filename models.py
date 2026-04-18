@@ -1,7 +1,7 @@
 from uuid import uuid7, UUID
 from decimal import Decimal
 from datetime import datetime, timezone
-from sqlalchemy import Numeric, CheckConstraint, Enum
+from sqlalchemy import CheckConstraint, Enum, Numeric
 from sqlalchemy.orm import mapped_column, Mapped
 
 from db import Base
@@ -33,5 +33,6 @@ class Profile(Base):
         ),
     )
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, default=lambda: datetime.now(timezone.utc)
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )
