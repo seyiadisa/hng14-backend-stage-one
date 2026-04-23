@@ -1,7 +1,7 @@
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
-from sqlalchemy import CheckConstraint, Enum, Numeric, String, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, Numeric, String, func, text
 from sqlalchemy.orm import mapped_column, Mapped
 
 from db import Base
@@ -23,7 +23,7 @@ class Profile(Base):
     )
     age: Mapped[int]
     age_group: Mapped[str] = mapped_column(Enum(AgeGroup))
-    country_id: Mapped[str] = mapped_column(String(2))
+    country_id: Mapped[str] = mapped_column(String(2), index=True)
     country_name: Mapped[str]
     country_probability: Mapped[Decimal] = mapped_column(
         Numeric(precision=3, scale=2),
@@ -33,6 +33,8 @@ class Profile(Base):
         ),
     )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
+        index=True,
+        server_default=text("TIMEZONE('utc', CURRENT_TIMESTAMP)"),
     )
