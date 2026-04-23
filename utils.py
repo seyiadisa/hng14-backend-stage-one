@@ -1,23 +1,11 @@
 import httpx
-from enum import Enum
 from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy import Select, func, asc, desc
 
 from models import Profile
+from enums import AgeGroup, Gender
 from schemas import Profile as ProfileSchema, ProfileListItem, ProfileListQueryParams
-
-
-class AgeGroup(str, Enum):
-    child = "child"
-    teenager = "teenager"
-    adult = "adult"
-    senior = "senior"
-
-
-class Gender(str, Enum):
-    male = "male"
-    female = "female"
 
 
 def get_age_group(age: int) -> AgeGroup:

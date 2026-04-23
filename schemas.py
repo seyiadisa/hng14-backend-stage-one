@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from utils import AgeGroup, Gender
+from enums import AgeGroup, Gender
 
 
 class Profile(BaseModel):

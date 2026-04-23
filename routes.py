@@ -10,7 +10,6 @@ from models import Profile
 from schemas import ProfileListQueryParams
 
 from utils import (
-    AgeGroup,
     parse_name,
     serialize_profile,
     serialize_profile_list_item,

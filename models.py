@@ -5,7 +5,7 @@ from sqlalchemy import CheckConstraint, Enum, Numeric, String
 from sqlalchemy.orm import mapped_column, Mapped
 
 from db import Base
-from utils import AgeGroup, Gender
+from enums import AgeGroup, Gender
 
 
 class Profile(Base):
@@ -13,7 +13,7 @@ class Profile(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(nullable=False, index=True, unique=True)
-    gender: Mapped[str] = mapped_column(Enum(Gender), name="gender_enum")
+    gender: Mapped[str] = mapped_column(Enum(Gender))
     gender_probability: Mapped[Decimal] = mapped_column(
         Numeric(precision=3, scale=2),
         CheckConstraint(
@@ -22,7 +22,7 @@ class Profile(Base):
         ),
     )
     age: Mapped[int]
-    age_group: Mapped[str] = mapped_column(Enum(AgeGroup), name="age_group_enum")
+    age_group: Mapped[str] = mapped_column(Enum(AgeGroup))
     country_id: Mapped[str] = mapped_column(String(2))
     country_name: Mapped[str]
     country_probability: Mapped[Decimal] = mapped_column(
