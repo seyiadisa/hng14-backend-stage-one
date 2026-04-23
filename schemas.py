@@ -1,3 +1,4 @@
+from typing import Literal
 from typing_extensions import Self
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -47,9 +48,9 @@ class ProfileListQueryParams(BaseModel):
     min_country_probability: Decimal | None = Field(
         default=None, decimal_places=2, le=1, ge=0
     )
-    order: str | None = Field(default=None, pattern="^(asc|desc)$")
-    sort_by: str | None = Field(
-        default=None, pattern="^(age|created_at|gender_probability)$"
+    order: Literal["asc", "desc"] | None = Field(default=None)
+    sort_by: Literal["age", "created_at", "gender_probability"] | None = Field(
+        default=None
     )
     page: int = Field(default=1, ge=1)
     limit: int = Field(default=10, ge=1, le=50)
@@ -60,4 +61,10 @@ class ProfileListQueryParams(BaseModel):
         max_age = self.max_age
         if min_age is not None and max_age is not None and min_age > max_age:
             raise ValueError("min_age cannot be greater than max_age")
+        return self
+
+    @model_validator(mode="after")
+    def validate_sorting(self) -> Self:
+        if self.order is not None and self.sort_by is None:
+            raise ValueError("order must be provided with sort_by")
         return self
