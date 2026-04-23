@@ -27,6 +27,10 @@ class Profile(BaseModel):
         return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+class ProfileCreate(BaseModel):
+    name: str
+
+
 class ProfileListItem(Profile):
     pass
 

@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Response, status, Query
@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from models import Profile
-from schemas import ProfileListQueryParams
+from schemas import ProfileListQueryParams, ProfileCreate
 
 from utils import (
     parse_name,
@@ -20,16 +20,16 @@ from utils import (
     apply_sorting,
 )
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", tags=["Profiles"])
 
 
 @router.post("/profiles", status_code=status.HTTP_201_CREATED)
 async def create_profile(
     response: Response,
-    payload: Annotated[dict[str, Any], Body()],
+    payload: Annotated[ProfileCreate, Body()],
     db: AsyncSession = Depends(get_db),
 ):
-    name = parse_name(payload)
+    name = parse_name(payload.name)
     db_profile = await db.execute(
         select(Profile).where(func.lower(Profile.name) == name)
     )

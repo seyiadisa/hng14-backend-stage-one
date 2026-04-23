@@ -33,14 +33,13 @@ def invalid_upstream(api_name: str) -> HTTPException:
     )
 
 
-def parse_name(payload: dict[str, Any]) -> str:
-    if "name" not in payload:
+def parse_name(name: str) -> str:
+    if not name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing or empty name",
         )
 
-    name = payload["name"]
     if not isinstance(name, str):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
