@@ -6,3 +6,8 @@ class AgeGroup(str, Enum):
     teenager = "teenager"
     adult = "adult"
     senior = "senior"
+
+
+class Gender(str, Enum):
+    male = "male"
+    female = "female"
