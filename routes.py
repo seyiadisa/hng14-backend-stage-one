@@ -111,21 +111,38 @@ async def get_profiles(
     params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
+    count = select(func.count()).select_from(Profile)
+    count = await db.execute(apply_filters(count, params))
+    total = count.scalar_one()
+
+    offset = (params.page - 1) * params.limit
 
     query = select(Profile)
     query = apply_filters(query, params)
     query = apply_sorting(query, params.sort_by, params.order)
+    query = query.offset(offset).limit(params.limit)
 
     db_profiles = await db.execute(query)
     profiles = db_profiles.scalars().all()
+
+    if not profiles:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profiles found matching the criteria",
+        )
 
     return {
         "status": "success",
         "page": params.page,
         "limit": params.limit,
-        "total": len(profiles),
+        "total": total,
         "data": [serialize_profile_list_item(profile) for profile in profiles],
     }
+
+
+@router.get("/profiles/search")
+async def search_profiles(q: str | None = None, db: AsyncSession = Depends(get_db)):
+    pass
 
 
 @router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
