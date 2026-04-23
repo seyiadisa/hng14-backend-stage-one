@@ -7,10 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from models import Profile
-from schemas import ProfileListQueryParams, ProfileCreate
+from schemas import ProfileListQueryParams, ProfileCreate, ProfileSearchQueryParams
 
 from utils import (
     parse_name,
+    parse_search_query,
     serialize_profile,
     serialize_profile_list_item,
     invalid_upstream,
@@ -30,9 +31,7 @@ async def create_profile(
     db: AsyncSession = Depends(get_db),
 ):
     name = parse_name(payload.name)
-    db_profile = await db.execute(
-        select(Profile).where(func.lower(Profile.name) == name)
-    )
+    db_profile = await db.execute(select(Profile).where(Profile.name == name))
     existing_profile = db_profile.scalar_one_or_none()
 
     if existing_profile:
@@ -76,7 +75,7 @@ async def create_profile(
         name=name,
         gender=gender,
         gender_probability=gender_probability,
-        sample_size=sample_size,
+        # sample_size=sample_size,
         age=age,
         age_group=get_age_group(age),
         country_id=country_id,
@@ -90,20 +89,6 @@ async def create_profile(
         "status": "success",
         "data": serialize_profile(new_profile),
     }
-
-
-@router.get("/profiles/{profile_id}")
-async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db)):
-    db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
-    profile = db_profile.scalar_one_or_none()
-
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Profile not found",
-        )
-
-    return {"status": "success", "data": serialize_profile(profile)}
 
 
 @router.get("/profiles")
@@ -141,8 +126,52 @@ async def get_profiles(
 
 
 @router.get("/profiles/search")
-async def search_profiles(q: str | None = None, db: AsyncSession = Depends(get_db)):
-    pass
+async def search_profiles_with_natural_language(
+    params: Annotated[ProfileSearchQueryParams, Query()],
+    db: AsyncSession = Depends(get_db),
+):
+    filters = parse_search_query(params.q)
+
+    count = select(func.count()).select_from(Profile)
+    count = await db.execute(apply_filters(count, filters))
+    total = count.scalar_one()
+
+    offset = (params.page - 1) * params.limit
+
+    query = select(Profile)
+    query = apply_filters(query, filters)
+    query = query.offset(offset).limit(params.limit)
+
+    db_profiles = await db.execute(query)
+    profiles = db_profiles.scalars().all()
+
+    if not profiles:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profiles found matching the criteria",
+        )
+
+    return {
+        "status": "success",
+        "page": params.page,
+        "limit": params.limit,
+        "total": total,
+        "data": [serialize_profile_list_item(profile) for profile in profiles],
+    }
+
+
+@router.get("/profiles/{profile_id}")
+async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db)):
+    db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
+    profile = db_profile.scalar_one_or_none()
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found",
+        )
+
+    return {"status": "success", "data": serialize_profile(profile)}
 
 
 @router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)

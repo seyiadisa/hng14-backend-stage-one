@@ -68,3 +68,9 @@ class ProfileListQueryParams(BaseModel):
         if self.order is not None and self.sort_by is None:
             raise ValueError("order must be provided with sort_by")
         return self
+
+
+class ProfileSearchQueryParams(BaseModel):
+    q: str | None = None
+    page: int = Field(default=1, ge=1)
+    limit: int = Field(default=10, ge=1, le=50)
