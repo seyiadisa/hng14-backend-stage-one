@@ -39,12 +39,24 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-) -> JSONResponse:
+async def validation_exception_handler(request: Request, exc) -> JSONResponse:
+    is_query_validation_error = any(
+        isinstance(error.get("loc"), (tuple, list))
+        and len(error["loc"]) > 0
+        and error["loc"][0] == "query"
+        for error in exc.errors()
+    )
+
     return JSONResponse(
         status_code=422,
-        content={"status": "error", "message": "Invalid type"},
+        content={
+            "status": "error",
+            "message": (
+                "Invalid query parameters"
+                if is_query_validation_error
+                else "Invalid type"
+            ),
+        },
     )
 
 
