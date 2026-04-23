@@ -1,10 +1,11 @@
+from typing_extensions import Self
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from utils import AgeGroup
+from utils import AgeGroup, Gender
 
 
 class Profile(BaseModel):
@@ -12,7 +13,7 @@ class Profile(BaseModel):
     name: str
     gender: str
     gender_probability: Decimal = Field(decimal_places=2, le=1, ge=0)
-    sample_size: int
+    # sample_size: int
     age: int
     age_group: AgeGroup
     country_id: str
@@ -26,12 +27,33 @@ class Profile(BaseModel):
         return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-class ProfileListItem(BaseModel):
-    id: UUID
-    name: str
-    gender: str
-    age: int
-    age_group: AgeGroup
-    country_id: str
+class ProfileListItem(Profile):
+    pass
 
-    model_config = ConfigDict(from_attributes=True)
+
+class ProfileListQueryParams(BaseModel):
+    gender: Gender | None = None
+    age_group: AgeGroup | None = None
+    country_id: str | None = Field(default=None, min_length=2, max_length=2)
+    min_age: int | None = Field(default=None, ge=1)
+    max_age: int | None = Field(default=None, ge=1)
+    min_gender_probability: Decimal | None = Field(
+        default=None, decimal_places=2, le=1, ge=0
+    )
+    min_country_probability: Decimal | None = Field(
+        default=None, decimal_places=2, le=1, ge=0
+    )
+    order: str | None = Field(default=None, pattern="^(asc|desc)$")
+    sort_by: str | None = Field(
+        default=None, pattern="^(age|created_at|gender_probability)$"
+    )
+    page: int = Field(default=1, ge=1)
+    limit: int = Field(default=10, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def validate_age_range(self) -> Self:
+        min_age = self.min_age
+        max_age = self.max_age
+        if min_age is not None and max_age is not None and min_age > max_age:
+            raise ValueError("min_age cannot be greater than max_age")
+        return self

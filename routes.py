@@ -1,12 +1,13 @@
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Response, status, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from models import Profile
+from schemas import ProfileListQueryParams
 
 from utils import (
     AgeGroup,
@@ -16,6 +17,8 @@ from utils import (
     invalid_upstream,
     fetch_json,
     get_age_group,
+    apply_filters,
+    apply_sorting,
 )
 
 router = APIRouter(prefix="/api")
@@ -106,33 +109,22 @@ async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db))
 
 @router.get("/profiles")
 async def get_profiles(
+    params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
-    gender: str | None = None,
-    country_id: str | None = None,
-    age_group: str | None = None,
 ):
-    query = select(Profile)
 
-    if gender:
-        query = query.where(func.lower(Profile.gender) == gender.lower())
-    if country_id:
-        query = query.where(func.lower(Profile.country_id) == country_id.lower())
-    if age_group:
-        try:
-            normalized_age_group = AgeGroup(age_group.lower())
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid type",
-            ) from None
-        query = query.where(Profile.age_group == normalized_age_group)
+    query = select(Profile)
+    query = apply_filters(query, params)
+    query = apply_sorting(query, params.sort_by, params.order)
 
     db_profiles = await db.execute(query)
     profiles = db_profiles.scalars().all()
 
     return {
         "status": "success",
-        "count": len(profiles),
+        "page": params.page,
+        "limit": params.limit,
+        "total": len(profiles),
         "data": [serialize_profile_list_item(profile) for profile in profiles],
     }
 
