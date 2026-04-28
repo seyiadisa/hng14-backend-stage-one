@@ -5,11 +5,15 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Response, status, Q
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import get_db
-from models import Profile
-from schemas import ProfileListQueryParams, ProfileCreate, ProfileSearchQueryParams
+from app.db.session import get_db
+from app.models.profile import Profile
+from app.schemas.profile import (
+    ProfileListQueryParams,
+    ProfileCreate,
+    ProfileSearchQueryParams,
+)
 
-from utils import (
+from app.services.utils import (
     parse_name,
     parse_search_query,
     serialize_profile,
@@ -21,10 +25,10 @@ from utils import (
     apply_sorting,
 )
 
-router = APIRouter(prefix="/api", tags=["Profiles"])
+router = APIRouter()
 
 
-@router.post("/profiles", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_profile(
     response: Response,
     payload: Annotated[ProfileCreate, Body()],
@@ -91,7 +95,7 @@ async def create_profile(
     }
 
 
-@router.get("/profiles")
+@router.get("")
 async def get_profiles(
     params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
@@ -125,7 +129,7 @@ async def get_profiles(
     }
 
 
-@router.get("/profiles/search")
+@router.get("/search")
 async def search_profiles_with_natural_language(
     params: Annotated[ProfileSearchQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
@@ -160,7 +164,7 @@ async def search_profiles_with_natural_language(
     }
 
 
-@router.get("/profiles/{profile_id}")
+@router.get("/{profile_id}")
 async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db)):
     db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = db_profile.scalar_one_or_none()
@@ -174,7 +178,7 @@ async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db))
     return {"status": "success", "data": serialize_profile(profile)}
 
 
-@router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
     db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = db_profile.scalar_one_or_none()

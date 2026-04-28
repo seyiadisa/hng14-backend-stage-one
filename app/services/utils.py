@@ -6,9 +6,13 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy import Select, func, asc, desc
 
-from models import Profile
-from enums import AgeGroup, Gender
-from schemas import Profile as ProfileSchema, ProfileListItem, ProfileListQueryParams
+from app.models.profile import Profile
+from app.models.enums import AgeGroup, Gender
+from app.schemas.profile import (
+    Profile as ProfileSchema,
+    ProfileListItem,
+    ProfileListQueryParams,
+)
 
 COUNTRY_ALIASES = {
     "angolan": "Angola",
