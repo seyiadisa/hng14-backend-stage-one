@@ -7,22 +7,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.profile import Profile
+from app.services.language_parser import parse_search_query
 from app.schemas.profile import (
     ProfileListQueryParams,
     ProfileCreate,
     ProfileSearchQueryParams,
 )
-
-from app.services.utils import (
+from app.services.profile_service import (
     parse_name,
-    parse_search_query,
+    apply_filters,
+    apply_sorting,
+)
+from app.services.utils import (
     serialize_profile,
     serialize_profile_list_item,
     invalid_upstream,
     fetch_json,
     get_age_group,
-    apply_filters,
-    apply_sorting,
 )
 
 router = APIRouter()
