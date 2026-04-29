@@ -2,8 +2,9 @@ import jwt
 import secrets
 import hashlib
 from datetime import datetime, timedelta, timezone
+from fastapi import Response
 
-from app.core.config import get_settings
+from app.core.config import get_settings, Settings
 
 
 def create_access_token(user_id: str) -> str:
@@ -45,3 +46,38 @@ def decode_access_token(token: str) -> dict:
         raise ValueError("Token has expired")
     except jwt.InvalidTokenError:
         raise ValueError("Invalid token")
+
+
+def set_auth_cookies(
+    response: Response,
+    access_token: str,
+    refresh_token: str,
+    csrf_token: str,
+    settings: Settings,
+) -> None:
+    response.set_cookie(
+        "access_token",
+        access_token,
+        httponly=True,
+        secure=True,
+        max_age=settings.access_token_expire_minutes * 60,
+    )
+    response.set_cookie(
+        "refresh_token",
+        refresh_token,
+        httponly=True,
+        secure=True,
+        max_age=settings.refresh_token_expire_minutes * 60,
+    )
+    response.set_cookie(
+        "csrf_token",
+        csrf_token,
+        secure=True,
+        max_age=settings.refresh_token_expire_minutes * 60,
+    )
+
+
+def clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    response.delete_cookie("csrf_token")

@@ -2,16 +2,19 @@ import httpx
 import secrets
 import base64
 import hashlib
+from datetime import datetime, timezone
 from urllib.parse import urlencode
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings, Settings
+from app.core.security import hash_token, set_auth_cookies, clear_auth_cookies
 from app.db.session import get_db
-from app.models.user import User
+from app.models.user import User, RefreshToken
 from app.services.auth import generate_tokens, get_github_user_info
+from app.dependencies.auth import verify_csrf_token
 
 
 router = APIRouter()
@@ -111,35 +114,87 @@ async def github_callback(
     response = RedirectResponse(settings.frontend_redirect_uri)
     response.delete_cookie("github_oauth_state")
     response.delete_cookie("github_code_verifier")
-    response.set_cookie(
-        "access_token",
-        access_token,
-        httponly=True,
-        secure=True,
-        max_age=settings.access_token_expire_minutes * 60,
-    )
-    response.set_cookie(
-        "refresh_token",
-        refresh_token,
-        httponly=True,
-        secure=True,
-        max_age=settings.refresh_token_expire_minutes * 60,
-    )
-    response.set_cookie(
-        "csrf_token",
-        csrf_token,
-        secure=True,
-        max_age=settings.access_token_expire_minutes * 60,
-    )
+    set_auth_cookies(response, access_token, refresh_token, csrf_token, settings)
 
     return response
 
 
-@router.post("/refresh")
-async def refresh_token():
-    pass
+@router.post("/refresh", dependencies=[Depends(verify_csrf_token)])
+async def refresh_token(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token missing",
+        )
+
+    token_hash = hash_token(refresh_token)
+    token_result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+    stored_token = token_result.scalar_one_or_none()
+
+    if not stored_token:
+        clear_auth_cookies(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    expires_at = stored_token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at <= datetime.now(timezone.utc):
+        await db.delete(stored_token)
+        await db.commit()
+        clear_auth_cookies(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expired",
+        )
+
+    user = await db.get(User, stored_token.user_id)
+    if not user or not user.is_active:
+        await db.delete(stored_token)
+        await db.commit()
+        clear_auth_cookies(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    await db.delete(stored_token)
+    access_token, new_refresh_token = await generate_tokens(db, user)
+    csrf_token = secrets.token_urlsafe(32)
+    set_auth_cookies(response, access_token, new_refresh_token, csrf_token, settings)
+
+    return {"status": "success", "message": "Token refreshed"}
 
 
-@router.post("/logout")
-async def logout():
-    pass
+@router.post("/logout", dependencies=[Depends(verify_csrf_token)])
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    refresh_token = request.cookies.get("refresh_token")
+
+    if refresh_token:
+        token_result = await db.execute(
+            select(RefreshToken).where(
+                RefreshToken.token_hash == hash_token(refresh_token)
+            )
+        )
+        stored_token = token_result.scalar_one_or_none()
+        if stored_token:
+            await db.delete(stored_token)
+            await db.commit()
+
+    clear_auth_cookies(response)
+    return {"status": "success", "message": "Logged out successfully"}
