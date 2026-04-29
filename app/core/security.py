@@ -1,10 +1,11 @@
-import jwt
-import secrets
 import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
+
+import jwt
 from fastapi import Response
 
-from app.core.config import get_settings, Settings
+from app.core.config import Settings, get_settings
 
 
 def create_access_token(user_id: str) -> str:

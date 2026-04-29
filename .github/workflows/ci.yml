@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://user:password@localhost:5432/test_db
+      GITHUB_CLIENT_ID: test-client-id
+      GITHUB_CLIENT_SECRET: test-client-secret
+      GITHUB_REDIRECT_URI: http://localhost/auth/github/callback
+      FRONTEND_URL: http://localhost:3000
+      FRONTEND_REDIRECT_URI: http://localhost:3000/auth/callback
+      ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+      REFRESH_TOKEN_EXPIRE_MINUTES: "1440"
+      JWT_SECRET_KEY: test-secret-key-with-at-least-32-bytes
+      JWT_ALGORITHM: HS256
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run --with ruff ruff check .
+
+      - name: Test
+        run: uv run --with pytest pytest

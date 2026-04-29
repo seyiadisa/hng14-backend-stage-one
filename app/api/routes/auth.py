@@ -1,21 +1,21 @@
-import httpx
-import secrets
 import base64
 import hashlib
+import secrets
 from datetime import datetime, timezone
 from urllib.parse import urlencode
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings, Settings
-from app.core.security import hash_token, set_auth_cookies, clear_auth_cookies
+from app.core.config import Settings, get_settings
+from app.core.security import clear_auth_cookies, hash_token, set_auth_cookies
 from app.db.session import get_db
-from app.models.user import User, RefreshToken
-from app.services.auth import generate_tokens, get_github_user_info
 from app.dependencies.auth import verify_csrf_token
-
+from app.models.user import RefreshToken, User
+from app.services.auth import generate_tokens, get_github_user_info
 
 router = APIRouter()
 

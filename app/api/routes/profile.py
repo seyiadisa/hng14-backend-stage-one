@@ -2,33 +2,33 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.dependencies.auth import require_roles, verify_csrf_token
 from app.models.enums import Role
 from app.models.profile import Profile
-from app.services.csv_parser import generate_csv
-from app.services.language_parser import parse_search_query
-from app.dependencies.auth import require_roles, verify_csrf_token
 from app.schemas.profile import (
+    ProfileCreate,
     ProfileExportQueryParams,
     ProfileListQueryParams,
-    ProfileCreate,
     ProfileSearchQueryParams,
 )
+from app.services.csv_parser import generate_csv
+from app.services.language_parser import parse_search_query
 from app.services.profile_service import (
-    parse_name,
     apply_filters,
     apply_sorting,
+    parse_name,
 )
 from app.services.utils import (
-    serialize_profile,
-    serialize_profile_list_item,
-    invalid_upstream,
     fetch_json,
     get_age_group,
+    invalid_upstream,
+    serialize_profile,
+    serialize_profile_list_item,
 )
 
 router = APIRouter()
@@ -202,13 +202,12 @@ async def export_profiles_to_csv(
         )
 
     csv_data = generate_csv(profiles)
+    content_header = f'attachment; filename="profiles_{datetime.now(timezone.utc)}.csv"'
 
     return Response(
         content=csv_data,
         media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="profiles_{datetime.now(timezone.utc)}.csv"'
-        },
+        headers={"Content-Disposition": content_header},
     )
 
 

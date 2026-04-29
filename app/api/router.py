@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.routes import profile, auth
+from app.api.routes import auth, profile
 from app.dependencies.auth import verify_api_version_header
 
 router = APIRouter()

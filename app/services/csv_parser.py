@@ -1,8 +1,6 @@
 import csv
 import io
 
-
-
 CSV_COLUMNS = [
     "id",
     "name",

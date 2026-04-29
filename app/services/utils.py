@@ -1,11 +1,14 @@
-import httpx
 from typing import Any
+
+import httpx
 from fastapi import HTTPException, status
 
-from app.models.profile import Profile
 from app.models.enums import AgeGroup
+from app.models.profile import Profile
 from app.schemas.profile import (
     Profile as ProfileSchema,
+)
+from app.schemas.profile import (
     ProfileListItem,
 )
 

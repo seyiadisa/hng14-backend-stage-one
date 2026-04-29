@@ -1,11 +1,12 @@
-import httpx
 from datetime import datetime, timedelta, timezone
+
+import httpx
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User, RefreshToken
-from app.core.security import create_access_token, create_refresh_token, hash_token
 from app.core.config import get_settings
+from app.core.security import create_access_token, create_refresh_token, hash_token
+from app.models.user import RefreshToken, User
 
 
 async def get_github_user_info(access_token: str) -> dict:
