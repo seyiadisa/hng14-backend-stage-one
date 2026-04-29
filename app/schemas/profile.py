@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from enums import AgeGroup, Gender
+from app.models.enums import AgeGroup, Gender
 
 
 class Profile(BaseModel):
@@ -70,6 +70,10 @@ class ProfileListQueryParams(BaseModel):
         if self.order is not None and self.sort_by is None:
             raise ValueError("order must be provided with sort_by")
         return self
+
+
+class ProfileExportQueryParams(ProfileListQueryParams):
+    format: Literal["csv"] = Field()
 
 
 class ProfileSearchQueryParams(BaseModel):

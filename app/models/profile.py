@@ -4,8 +4,8 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, Enum, Numeric, String, func, text
 from sqlalchemy.orm import mapped_column, Mapped
 
-from db import Base
-from enums import AgeGroup, Gender
+from app.models.enums import AgeGroup, Gender
+from app.db.base import Base
 
 
 class Profile(Base):

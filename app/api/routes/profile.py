@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
@@ -5,26 +6,40 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Response, status, Q
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import get_db
-from models import Profile
-from schemas import ProfileListQueryParams, ProfileCreate, ProfileSearchQueryParams
-
-from utils import (
+from app.db.session import get_db
+from app.models.enums import Role
+from app.models.profile import Profile
+from app.services.csv_parser import generate_csv
+from app.services.language_parser import parse_search_query
+from app.dependencies.auth import require_roles, verify_csrf_token
+from app.models.user import User
+from app.schemas.profile import (
+    ProfileExportQueryParams,
+    ProfileListQueryParams,
+    ProfileCreate,
+    ProfileSearchQueryParams,
+)
+from app.services.profile_service import (
     parse_name,
-    parse_search_query,
+    apply_filters,
+    apply_sorting,
+)
+from app.services.utils import (
     serialize_profile,
     serialize_profile_list_item,
     invalid_upstream,
     fetch_json,
     get_age_group,
-    apply_filters,
-    apply_sorting,
 )
 
-router = APIRouter(prefix="/api", tags=["Profiles"])
+router = APIRouter()
 
 
-@router.post("/profiles", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(Role.admin)), Depends(verify_csrf_token)],
+)
 async def create_profile(
     response: Response,
     payload: Annotated[ProfileCreate, Body()],
@@ -91,7 +106,7 @@ async def create_profile(
     }
 
 
-@router.get("/profiles")
+@router.get("", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
 async def get_profiles(
     params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
@@ -125,7 +140,13 @@ async def get_profiles(
     }
 
 
-@router.get("/profiles/search")
+@router.get(
+    "/search",
+    dependencies=[
+        Depends(require_roles(Role.analyst, Role.admin)),
+        Depends(verify_csrf_token),
+    ],
+)
 async def search_profiles_with_natural_language(
     params: Annotated[ProfileSearchQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
@@ -160,7 +181,41 @@ async def search_profiles_with_natural_language(
     }
 
 
-@router.get("/profiles/{profile_id}")
+@router.get("/export", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
+async def export_profiles_to_csv(
+    params: Annotated[ProfileExportQueryParams, Query()],
+    db: AsyncSession = Depends(get_db),
+):
+    offset = (params.page - 1) * params.limit
+
+    query = select(Profile)
+    query = apply_filters(query, params)
+    query = apply_sorting(query, params.sort_by, params.order)
+    query = query.offset(offset).limit(params.limit)
+
+    db_profiles = await db.execute(query)
+    profiles = db_profiles.scalars().all()
+
+    if not profiles:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profiles found to export",
+        )
+
+    csv_data = generate_csv(profiles)
+
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="profiles_{datetime.now(timezone.utc)}.csv"'
+        },
+    )
+
+
+@router.get(
+    "/{profile_id}", dependencies=[Depends(require_roles(Role.analyst, Role.admin))]
+)
 async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db)):
     db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = db_profile.scalar_one_or_none()
@@ -174,7 +229,11 @@ async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db))
     return {"status": "success", "data": serialize_profile(profile)}
 
 
-@router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{profile_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(Role.admin))],
+)
 async def delete_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
     db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = db_profile.scalar_one_or_none()
