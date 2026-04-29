@@ -1,9 +1,6 @@
 import csv
 import io
 
-from app.models.profile import Profile
-
-
 CSV_COLUMNS = [
     "id",
     "name",

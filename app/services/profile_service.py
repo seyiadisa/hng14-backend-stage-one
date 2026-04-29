@@ -1,8 +1,8 @@
-from sqlalchemy import Select, func, asc, desc
 from fastapi import HTTPException, status
+from sqlalchemy import Select, asc, desc
 
-from app.models.profile import Profile
 from app.models.enums import AgeGroup, Gender
+from app.models.profile import Profile
 from app.schemas.profile import ProfileListQueryParams
 
 

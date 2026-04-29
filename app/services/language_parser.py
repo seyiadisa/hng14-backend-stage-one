@@ -1,11 +1,11 @@
 import re
+
 import pycountry
 from pydantic import ValidationError
 
 from app.models.enums import AgeGroup, Gender
 from app.schemas.profile import ProfileListQueryParams
 from app.services.utils import invalid_search_query
-
 
 COUNTRY_ALIASES = {
     "angolan": "Angola",
