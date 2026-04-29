@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import router
+from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import engine
 from app.core.errors import (
@@ -29,7 +30,8 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(router)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_credentials=True,
+    allow_origins=[get_settings().frontend_url],
     allow_methods=["*"],
     allow_headers=["*"],
 )
