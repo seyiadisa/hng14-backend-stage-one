@@ -80,3 +80,19 @@ def verify_api_version_header(request: Request):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="API version header required",
         )
+
+
+def verify_csrf_token(request: Request):
+    csrf_cookie = request.cookies.get("csrf_token")
+    csrf_token = request.headers.get("X-CSRF-Token")
+
+    if not csrf_cookie or not csrf_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token missing",
+        )
+    if csrf_cookie != csrf_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid CSRF token",
+        )

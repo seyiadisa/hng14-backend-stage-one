@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.enums import Role
 from app.models.profile import Profile
 from app.services.language_parser import parse_search_query
-from app.dependencies.auth import require_roles
+from app.dependencies.auth import require_roles, verify_csrf_token
 from app.models.user import User
 from app.schemas.profile import (
     ProfileListQueryParams,
@@ -35,7 +35,7 @@ router = APIRouter()
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(Role.admin))],
+    dependencies=[Depends(require_roles(Role.admin)), Depends(verify_csrf_token)],
 )
 async def create_profile(
     response: Response,
@@ -137,7 +137,13 @@ async def get_profiles(
     }
 
 
-@router.get("/search", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
+@router.get(
+    "/search",
+    dependencies=[
+        Depends(require_roles(Role.analyst, Role.admin)),
+        Depends(verify_csrf_token),
+    ],
+)
 async def search_profiles_with_natural_language(
     params: Annotated[ProfileSearchQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
