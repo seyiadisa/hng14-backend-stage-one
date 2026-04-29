@@ -11,3 +11,8 @@ class AgeGroup(str, Enum):
 class Gender(str, Enum):
     male = "male"
     female = "female"
+
+
+class Role(str, Enum):
+    analyst = "analyst"
+    admin = "admin"
