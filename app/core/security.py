@@ -27,3 +27,21 @@ def create_refresh_token() -> str:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def verify_refresh_token(token: str, token_hash: str) -> bool:
+    return hash_token(token) == token_hash
+
+
+def decode_access_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(
+            token,
+            get_settings().jwt_secret_key,
+            algorithms=[get_settings().jwt_algorithm],
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Token has expired")
+    except jwt.InvalidTokenError:
+        raise ValueError("Invalid token")
