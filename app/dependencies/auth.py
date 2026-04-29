@@ -1,4 +1,5 @@
 from fastapi import Request, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyCookie
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -7,18 +8,21 @@ from app.models.enums import Role
 from app.core.security import decode_access_token
 from app.db.session import get_db
 
+bearer_scheme = HTTPBearer(auto_error=False)
+cookie_scheme = APIKeyCookie(name="access_token", auto_error=False)
+
 
 async def get_current_user(
-    request: Request, db: AsyncSession = Depends(get_db)
+    bearer_token: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    cookie_token: str | None = Depends(cookie_scheme),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     token = None
 
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-
-    if not token:
-        token = request.cookies.get("access_token")
+    if bearer_token:
+        token = bearer_token.credentials
+    elif cookie_token:
+        token = cookie_token
 
     if not token:
         raise HTTPException(
