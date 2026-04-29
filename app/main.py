@@ -6,13 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import router
 from app.core.config import get_settings
-from app.db.base import Base
-from app.db.session import engine
 from app.core.errors import (
+    generic_exception_handler,
     http_exception_handler,
     validation_exception_handler,
-    generic_exception_handler,
 )
+from app.db.base import Base
+from app.db.session import engine
 
 
 @asynccontextmanager

@@ -1,12 +1,11 @@
-from fastapi import Request, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyCookie
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-from app.models.user import User
-from app.models.enums import Role
 from app.core.security import decode_access_token
 from app.db.session import get_db
+from app.models.enums import Role
+from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 cookie_scheme = APIKeyCookie(name="access_token", auto_error=False)

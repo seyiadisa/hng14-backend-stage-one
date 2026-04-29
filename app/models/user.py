@@ -1,5 +1,6 @@
 from uuid import UUID
-from sqlalchemy import Enum, DateTime, text, func
+
+from sqlalchemy import DateTime, Enum, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base

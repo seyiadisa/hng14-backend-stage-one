@@ -1,10 +1,10 @@
-from typing import Literal
-from typing_extensions import Self
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from typing_extensions import Self
 
 from app.models.enums import AgeGroup, Gender
 

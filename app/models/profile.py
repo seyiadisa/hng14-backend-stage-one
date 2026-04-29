@@ -1,11 +1,12 @@
-from uuid import UUID
-from decimal import Decimal
 from datetime import datetime
-from sqlalchemy import CheckConstraint, DateTime, Enum, Numeric, String, func, text
-from sqlalchemy.orm import mapped_column, Mapped
+from decimal import Decimal
+from uuid import UUID
 
-from app.models.enums import AgeGroup, Gender
+from sqlalchemy import CheckConstraint, DateTime, Enum, Numeric, String, func, text
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db.base import Base
+from app.models.enums import AgeGroup, Gender
 
 
 class Profile(Base):
