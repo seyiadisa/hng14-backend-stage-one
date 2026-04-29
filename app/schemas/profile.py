@@ -72,6 +72,10 @@ class ProfileListQueryParams(BaseModel):
         return self
 
 
+class ProfileExportQueryParams(ProfileListQueryParams):
+    format: Literal["csv"] = Field()
+
+
 class ProfileSearchQueryParams(BaseModel):
     q: str | None = None
     page: int = Field(default=1, ge=1)

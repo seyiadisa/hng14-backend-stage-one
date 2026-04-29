@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
@@ -8,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.enums import Role
 from app.models.profile import Profile
+from app.services.csv_parser import generate_csv
 from app.services.language_parser import parse_search_query
 from app.dependencies.auth import require_roles, verify_csrf_token
 from app.models.user import User
 from app.schemas.profile import (
+    ProfileExportQueryParams,
     ProfileListQueryParams,
     ProfileCreate,
     ProfileSearchQueryParams,
@@ -176,6 +179,38 @@ async def search_profiles_with_natural_language(
         "total": total,
         "data": [serialize_profile_list_item(profile) for profile in profiles],
     }
+
+
+@router.get("/export", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
+async def export_profiles_to_csv(
+    params: Annotated[ProfileExportQueryParams, Query()],
+    db: AsyncSession = Depends(get_db),
+):
+    offset = (params.page - 1) * params.limit
+
+    query = select(Profile)
+    query = apply_filters(query, params)
+    query = apply_sorting(query, params.sort_by, params.order)
+    query = query.offset(offset).limit(params.limit)
+
+    db_profiles = await db.execute(query)
+    profiles = db_profiles.scalars().all()
+
+    if not profiles:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profiles found to export",
+        )
+
+    csv_data = generate_csv(profiles)
+
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="profiles_{datetime.now(timezone.utc)}.csv"'
+        },
+    )
 
 
 @router.get(
