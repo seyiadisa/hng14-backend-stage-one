@@ -11,3 +11,15 @@ dependencies = [
     "pyjwt>=2.12.1",
     "sqlalchemy>=2.0.49",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["B008"]
