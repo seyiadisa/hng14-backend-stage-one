@@ -12,7 +12,6 @@ from app.models.profile import Profile
 from app.services.csv_parser import generate_csv
 from app.services.language_parser import parse_search_query
 from app.dependencies.auth import require_roles, verify_csrf_token
-from app.models.user import User
 from app.schemas.profile import (
     ProfileExportQueryParams,
     ProfileListQueryParams,

@@ -1,4 +1,4 @@
-from sqlalchemy import Select, func, asc, desc
+from sqlalchemy import Select, asc, desc
 from fastapi import HTTPException, status
 
 from app.models.profile import Profile
