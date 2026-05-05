@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.limiter import auth_rate_limit
 from app.core.security import clear_auth_cookies, hash_token, set_auth_cookies
 from app.db.session import get_db
 from app.dependencies.auth import verify_csrf_token
@@ -21,7 +22,10 @@ router = APIRouter()
 
 
 @router.get("/github")
-async def github_login(settings: Settings = Depends(get_settings)):
+@auth_rate_limit
+async def github_login(
+    request: Request, settings: Settings = Depends(get_settings)
+):
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
     code_challenge = (
@@ -55,6 +59,7 @@ async def github_login(settings: Settings = Depends(get_settings)):
 
 
 @router.get("/github/callback")
+@auth_rate_limit
 async def github_callback(
     code: str,
     state: str,
@@ -126,6 +131,7 @@ async def github_callback(
 
 
 @router.post("/refresh", dependencies=[Depends(verify_csrf_token)])
+@auth_rate_limit
 async def refresh_token(
     request: Request,
     response: Response,
@@ -184,6 +190,7 @@ async def refresh_token(
 
 
 @router.post("/logout", dependencies=[Depends(verify_csrf_token)])
+@auth_rate_limit
 async def logout(
     request: Request,
     response: Response,

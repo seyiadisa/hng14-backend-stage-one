@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import profile_rate_limit
 from app.db.session import get_db
 from app.dependencies.auth import require_roles, verify_csrf_token
 from app.models.enums import Role
@@ -39,7 +40,9 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_roles(Role.admin)), Depends(verify_csrf_token)],
 )
+@profile_rate_limit
 async def create_profile(
+    request: Request,
     response: Response,
     payload: Annotated[ProfileCreate, Body()],
     db: AsyncSession = Depends(get_db),
@@ -106,7 +109,9 @@ async def create_profile(
 
 
 @router.get("", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
+@profile_rate_limit
 async def get_profiles(
+    request: Request,
     params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
@@ -135,6 +140,20 @@ async def get_profiles(
         "page": params.page,
         "limit": params.limit,
         "total": total,
+        "total_pages": (total + params.limit - 1) // params.limit,
+        "links": {
+            "self": f"/api/profiles?page={params.page}&limit={params.limit}",
+            "next": (
+                None
+                if params.page == total // params.limit
+                else f"/api/profiles?page={params.page + 1}&limit={params.limit}"
+            ),
+            "prev": (
+                None
+                if params.page == 1
+                else f"/api/profiles?page={params.page - 1}&limit={params.limit}"
+            ),
+        },
         "data": [serialize_profile_list_item(profile) for profile in profiles],
     }
 
@@ -146,7 +165,9 @@ async def get_profiles(
         Depends(verify_csrf_token),
     ],
 )
+@profile_rate_limit
 async def search_profiles_with_natural_language(
+    request: Request,
     params: Annotated[ProfileSearchQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
@@ -176,12 +197,28 @@ async def search_profiles_with_natural_language(
         "page": params.page,
         "limit": params.limit,
         "total": total,
+        "total_pages": (total + params.limit - 1) // params.limit,
+        "links": {
+            "self": f"/api/profiles/search?q={params.q}&page={params.page}&limit={params.limit}",
+            "next": (
+                None
+                if params.page == total // params.limit
+                else f"/api/profiles/search?q={params.q}&page={params.page + 1}&limit={params.limit}"
+            ),
+            "prev": (
+                None
+                if params.page == 1
+                else f"/api/profiles/search?q={params.q}&page={params.page - 1}&limit={params.limit}"
+            ),
+        },
         "data": [serialize_profile_list_item(profile) for profile in profiles],
     }
 
 
 @router.get("/export", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
+@profile_rate_limit
 async def export_profiles_to_csv(
+    request: Request,
     params: Annotated[ProfileExportQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
@@ -214,7 +251,10 @@ async def export_profiles_to_csv(
 @router.get(
     "/{profile_id}", dependencies=[Depends(require_roles(Role.analyst, Role.admin))]
 )
-async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db)):
+@profile_rate_limit
+async def get_profile_by_id(
+    request: Request, profile_id: str, db: AsyncSession = Depends(get_db)
+):
     db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = db_profile.scalar_one_or_none()
 
@@ -232,7 +272,10 @@ async def get_profile_by_id(profile_id: str, db: AsyncSession = Depends(get_db))
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_roles(Role.admin))],
 )
-async def delete_profile(profile_id: str, db: AsyncSession = Depends(get_db)):
+@profile_rate_limit
+async def delete_profile(
+    request: Request, profile_id: str, db: AsyncSession = Depends(get_db)
+):
     db_profile = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = db_profile.scalar_one_or_none()
 
