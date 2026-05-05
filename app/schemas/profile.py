@@ -3,7 +3,15 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+import pycountry
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    model_validator,
+    computed_field,
+)
 from typing_extensions import Self
 
 from app.models.enums import AgeGroup, Gender
@@ -28,6 +36,15 @@ class Profile(BaseModel):
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @computed_field
+    @property
+    def country_name(self) -> str:
+        try:
+            country = pycountry.countries.get(alpha_2=self.country_id)
+            return country.name if country else "Unknown country"
+        except KeyError, AttributeError:
+            return "Unknown country"
 
 
 class ProfileCreate(BaseModel):
