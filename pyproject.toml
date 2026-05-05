@@ -9,6 +9,7 @@ dependencies = [
     "fastapi[standard]>=0.136.0",
     "pycountry>=26.2.16",
     "pyjwt>=2.12.1",
+    "slowapi>=0.1.9",
     "sqlalchemy>=2.0.49",
 ]
 
