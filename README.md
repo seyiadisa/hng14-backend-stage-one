@@ -10,6 +10,7 @@ This project was built for the HNG Stage One backend task.
 - Role-based access control for `analyst` and `admin` users.
 - CSRF protection for state-changing cookie-authenticated requests.
 - API version enforcement through the `X-API-Version: 1` header on profile routes.
+- Request logging for method, endpoint, status code, and response time.
 - Create a profile from a single `name` input.
 - Call these public inference APIs:
   - `https://api.genderize.io?name={name}`
@@ -515,6 +516,23 @@ The app allows:
 - credentials
 - all HTTP methods
 - all request headers
+
+## Request Logging
+
+The app logs every HTTP request at `INFO` level.
+
+Each log entry includes:
+
+- HTTP method
+- endpoint path
+- response status code
+- response time in seconds
+
+Example:
+
+```text
+POST /api/profiles completed with 201 in 0.0342s
+```
 
 ## Example cURL Requests
 
