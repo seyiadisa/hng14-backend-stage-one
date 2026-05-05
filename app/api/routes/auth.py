@@ -66,7 +66,9 @@ async def github_callback(
     code_verifier = request.cookies.get("github_code_verifier")
 
     if not saved_state or not code_verifier or state != saved_state:
-        raise HTTPException(status_code=400, detail="Github OAuth state mismatch")
+        return RedirectResponse(
+            f"{settings.frontend_url}/login?error=github_oauth_error"
+        )
 
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
@@ -82,13 +84,17 @@ async def github_callback(
         )
 
     if token_response.status_code != 200:
-        raise HTTPException(status_code=400, detail="GitHub token exchange failed")
+        return RedirectResponse(
+            f"{settings.frontend_url}/login?error=github_oauth_error"
+        )
 
     token_data = token_response.json()
     github_access_token = token_data.get("access_token")
 
     if not github_access_token:
-        raise HTTPException(status_code=400, detail="GitHub authentication failed")
+        return RedirectResponse(
+            f"{settings.frontend_url}/login?error=github_oauth_error"
+        )
 
     github_user_info = await get_github_user_info(github_access_token)
 
