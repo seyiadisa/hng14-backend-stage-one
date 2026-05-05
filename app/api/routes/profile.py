@@ -2,7 +2,16 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -199,16 +208,19 @@ async def search_profiles_with_natural_language(
         "total": total,
         "total_pages": (total + params.limit - 1) // params.limit,
         "links": {
-            "self": f"/api/profiles/search?q={params.q}&page={params.page}&limit={params.limit}",
+            "self": "/api/profiles/search?"
+            + f"q={params.q}&page={params.page}&limit={params.limit}",
             "next": (
                 None
                 if params.page == total // params.limit
-                else f"/api/profiles/search?q={params.q}&page={params.page + 1}&limit={params.limit}"
+                else "/api/profiles/search?"
+                + f"q={params.q}&page={params.page + 1}&limit={params.limit}"
             ),
             "prev": (
                 None
                 if params.page == 1
-                else f"/api/profiles/search?q={params.q}&page={params.page - 1}&limit={params.limit}"
+                else "/api/profiles/search?"
+                + f"q={params.q}&page={params.page - 1}&limit={params.limit}"
             ),
         },
         "data": [serialize_profile_list_item(profile) for profile in profiles],

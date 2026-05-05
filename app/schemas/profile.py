@@ -8,9 +8,9 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_serializer,
     model_validator,
-    computed_field,
 )
 from typing_extensions import Self
 
