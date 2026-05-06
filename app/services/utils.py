@@ -1,6 +1,7 @@
 from typing import Any
 
 import httpx
+import pycountry
 from fastapi import HTTPException, status
 
 from app.models.enums import AgeGroup
@@ -21,6 +22,14 @@ def get_age_group(age: int) -> AgeGroup:
     if age <= 59:
         return AgeGroup.adult
     return AgeGroup.senior
+
+
+def get_country_name(country_id: str) -> str | None:
+    try:
+        country = pycountry.countries.get(alpha_2=country_id.upper())
+    except (AttributeError, KeyError):
+        return None
+    return country.name if country else None
 
 
 def serialize_profile(profile: Profile) -> dict[str, Any]:
