@@ -1,13 +1,14 @@
+import asyncio
 import csv
 import io
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import uuid4
 
 from fastapi import UploadFile
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import Gender
@@ -17,6 +18,7 @@ from app.services.query_cache import invalidate_profile_query_cache
 from app.services.utils import get_age_group, get_country_name
 
 CHUNK_SIZE = 5_000
+UPLOAD_CONCURRENCY_LIMIT = 2
 DECIMAL_PLACES = Decimal("0.01")
 REQUIRED_COLUMNS = (
     "name",
@@ -27,6 +29,18 @@ REQUIRED_COLUMNS = (
     "country_probability",
 )
 REPLACEMENT_CHARACTER = "\ufffd"
+STAGING_TABLE_PREFIX = "profile_upload_stage_"
+STAGING_COLUMNS = (
+    "name",
+    "gender",
+    "gender_probability",
+    "age",
+    "age_group",
+    "country_id",
+    "country_name",
+    "country_probability",
+)
+_upload_semaphore = asyncio.Semaphore(UPLOAD_CONCURRENCY_LIMIT)
 
 
 @dataclass
@@ -134,72 +148,184 @@ async def ingest_profile_csv(
     upload_file: UploadFile,
     chunk_size: int = CHUNK_SIZE,
 ) -> dict[str, Any]:
+    async with _upload_semaphore:
+        return await _ingest_profile_csv(db, upload_file, chunk_size)
+
+
+async def _ingest_profile_csv(
+    db: AsyncSession,
+    upload_file: UploadFile,
+    chunk_size: int,
+) -> dict[str, Any]:
+    bind = getattr(db, "bind", None)
+    if bind is not None:
+        async with bind.connect() as connection:
+            return await ingest_profile_csv_on_connection(
+                connection,
+                upload_file,
+                chunk_size,
+            )
+
+    connection = await db.connection()
+    return await ingest_profile_csv_on_connection(connection, upload_file, chunk_size)
+
+
+async def ingest_profile_csv_on_connection(
+    connection: Any,
+    upload_file: UploadFile,
+    chunk_size: int,
+) -> dict[str, Any]:
     summary = IngestionSummary()
     seen_names: set[str] = set()
     chunk: list[dict[str, Any]] = []
+    staging_table = f"{STAGING_TABLE_PREFIX}{uuid4().hex}"
 
-    upload_file.file.seek(0)
-    text_stream = io.TextIOWrapper(
-        upload_file.file,
-        encoding="utf-8",
-        errors="replace",
-        newline="",
-    )
-    reader = csv.DictReader(text_stream, delimiter=",")
+    try:
+        await create_profile_upload_staging_table(connection, staging_table)
 
-    for row in reader:
-        summary.total_rows += 1
-        valid_row, reason = validate_profile_csv_row(row, seen_names)
-        if reason is not None:
-            summary.skip(reason)
-            continue
+        upload_file.file.seek(0)
+        text_stream = io.TextIOWrapper(
+            upload_file.file,
+            encoding="utf-8",
+            errors="replace",
+            newline="",
+        )
+        reader = csv.DictReader(text_stream, delimiter=",")
 
-        if valid_row is not None:
-            chunk.append(valid_row)
+        for row in reader:
+            summary.total_rows += 1
+            valid_row, reason = validate_profile_csv_row(row, seen_names)
+            if reason is not None:
+                summary.skip(reason)
+                continue
 
-        if len(chunk) >= chunk_size:
-            await insert_profile_chunk(db, chunk, summary)
-            chunk.clear()
+            if valid_row is not None:
+                chunk.append(valid_row)
 
-    if chunk:
-        await insert_profile_chunk(db, chunk, summary)
+            if len(chunk) >= chunk_size:
+                await insert_profile_chunk(connection, chunk, summary, staging_table)
+                chunk.clear()
+
+        if chunk:
+            await insert_profile_chunk(connection, chunk, summary, staging_table)
+    finally:
+        await drop_profile_upload_staging_table(connection, staging_table)
 
     return summary.to_response()
 
 
+def quote_identifier(identifier: str) -> str:
+    return f'"{identifier}"'
+
+
+async def create_profile_upload_staging_table(
+    connection: Any,
+    staging_table: str,
+) -> None:
+    await connection.execute(
+        text(
+            f"""
+            CREATE TABLE {quote_identifier(staging_table)} (
+                name VARCHAR NOT NULL,
+                gender gender NOT NULL,
+                gender_probability NUMERIC(3, 2) NOT NULL,
+                age INTEGER NOT NULL,
+                age_group agegroup NOT NULL,
+                country_id VARCHAR(2) NOT NULL,
+                country_name VARCHAR NOT NULL,
+                country_probability NUMERIC(3, 2) NOT NULL
+            )
+            """
+        )
+    )
+    await connection.commit()
+
+
+async def drop_profile_upload_staging_table(
+    connection: Any,
+    staging_table: str,
+) -> None:
+    try:
+        if connection.in_transaction():
+            await connection.rollback()
+        await connection.execute(
+            text(f"DROP TABLE IF EXISTS {quote_identifier(staging_table)}")
+        )
+        await connection.commit()
+    except Exception:
+        await connection.rollback()
+
+
 async def insert_profile_chunk(
-    db: AsyncSession,
+    connection: Any,
     rows: list[dict[str, Any]],
     summary: IngestionSummary,
+    staging_table: str,
 ) -> None:
-    names = [row["name"] for row in rows]
-    existing_result = await db.execute(
-        select(Profile.name).where(Profile.name.in_(names))
-    )
-    existing_names = set(existing_result.scalars().all())
-
-    rows_to_insert = [row for row in rows if row["name"] not in existing_names]
-    duplicate_count = len(rows) - len(rows_to_insert)
-    if duplicate_count:
-        summary.reasons["duplicate_name"] += duplicate_count
-
-    if not rows_to_insert:
+    if not rows:
         return
 
-    statement = (
-        insert(Profile)
-        .values(rows_to_insert)
-        .on_conflict_do_nothing(index_elements=["name"])
+    await copy_profile_rows_to_staging(connection, rows, staging_table)
+    inserted = await merge_profile_upload_staging(connection, staging_table)
+    await connection.execute(
+        text(f"TRUNCATE TABLE {quote_identifier(staging_table)}")
     )
-    result = await db.execute(statement)
-    await db.commit()
+    await connection.commit()
 
-    inserted = result.rowcount if result.rowcount is not None else len(rows_to_insert)
-    inserted = max(inserted, 0)
     summary.inserted += inserted
-    conflict_count = len(rows_to_insert) - inserted
+    conflict_count = len(rows) - inserted
     if conflict_count:
         summary.reasons["duplicate_name"] += conflict_count
 
     if inserted:
         await invalidate_profile_query_cache()
+
+
+async def copy_profile_rows_to_staging(
+    connection: Any,
+    rows: list[dict[str, Any]],
+    staging_table: str,
+) -> None:
+    raw_connection = await connection.get_raw_connection()
+    driver_connection = raw_connection.driver_connection
+    records = [tuple(row[column] for column in STAGING_COLUMNS) for row in rows]
+    await driver_connection.copy_records_to_table(
+        staging_table,
+        records=records,
+        columns=STAGING_COLUMNS,
+    )
+
+
+async def merge_profile_upload_staging(connection: Any, staging_table: str) -> int:
+    result = await connection.execute(
+        text(
+            f"""
+            WITH inserted AS (
+                INSERT INTO {Profile.__tablename__} (
+                    name,
+                    gender,
+                    gender_probability,
+                    age,
+                    age_group,
+                    country_id,
+                    country_name,
+                    country_probability
+                )
+                SELECT
+                    name,
+                    gender,
+                    gender_probability,
+                    age,
+                    age_group,
+                    country_id,
+                    country_name,
+                    country_probability
+                FROM {quote_identifier(staging_table)}
+                ON CONFLICT (name) DO NOTHING
+                RETURNING name
+            )
+            SELECT COUNT(*) FROM inserted
+            """
+        )
+    )
+    return int(result.scalar_one())
