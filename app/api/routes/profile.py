@@ -29,10 +29,16 @@ from app.schemas.profile import (
 from app.services.csv_parser import generate_csv
 from app.services.language_parser import parse_search_query
 from app.services.profile_service import (
+    build_pagination_links,
     build_profile_page_query,
     execute_profile_page_query,
     parse_name,
 )
+from app.services.query_cache import (
+    invalidate_profile_query_cache,
+    profile_query_cache,
+)
+from app.services.query_normalization import profile_query_cache_key
 from app.services.utils import (
     fetch_json,
     get_age_group,
@@ -110,6 +116,7 @@ async def create_profile(
     db.add(new_profile)
     await db.commit()
     await db.refresh(new_profile)
+    await invalidate_profile_query_cache()
 
     return {
         "status": "success",
@@ -124,22 +131,40 @@ async def get_profiles(
     params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
-    page = await execute_profile_page_query(db, params, "/api/profiles")
+    cache_key = profile_query_cache_key(params)
+    cached_payload = await profile_query_cache.get(cache_key)
 
-    if not page.profiles:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No profiles found matching the criteria",
-        )
+    if cached_payload is None:
+        page = await execute_profile_page_query(db, params, "/api/profiles")
+
+        if not page.profiles:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No profiles found matching the criteria",
+            )
+
+        cached_payload = {
+            "total": page.total,
+            "total_pages": page.total_pages,
+            "data": [
+                serialize_profile_list_item(profile) for profile in page.profiles
+            ],
+        }
+        await profile_query_cache.set(cache_key, cached_payload)
 
     return {
         "status": "success",
         "page": params.page,
         "limit": params.limit,
-        "total": page.total,
-        "total_pages": page.total_pages,
-        "links": page.links,
-        "data": [serialize_profile_list_item(profile) for profile in page.profiles],
+        "total": cached_payload["total"],
+        "total_pages": cached_payload["total_pages"],
+        "links": build_pagination_links(
+            "/api/profiles",
+            params.page,
+            params.limit,
+            cached_payload["total_pages"],
+        ),
+        "data": cached_payload["data"],
     }
 
 
@@ -157,29 +182,42 @@ async def search_profiles_with_natural_language(
     db: AsyncSession = Depends(get_db),
 ):
     filters = parse_search_query(params.q)
-    filters.page = params.page
-    filters.limit = params.limit
-    page = await execute_profile_page_query(
-        db,
-        filters,
-        "/api/profiles/search",
-        extra_query=f"q={params.q}",
-    )
+    filters = filters.model_copy(update={"page": params.page, "limit": params.limit})
+    cache_key = profile_query_cache_key(filters)
+    cached_payload = await profile_query_cache.get(cache_key)
 
-    if not page.profiles:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No profiles found matching the criteria",
-        )
+    if cached_payload is None:
+        page = await execute_profile_page_query(db, filters, "/api/profiles/search")
+
+        if not page.profiles:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No profiles found matching the criteria",
+            )
+
+        cached_payload = {
+            "total": page.total,
+            "total_pages": page.total_pages,
+            "data": [
+                serialize_profile_list_item(profile) for profile in page.profiles
+            ],
+        }
+        await profile_query_cache.set(cache_key, cached_payload)
 
     return {
         "status": "success",
         "page": params.page,
         "limit": params.limit,
-        "total": page.total,
-        "total_pages": page.total_pages,
-        "links": page.links,
-        "data": [serialize_profile_list_item(profile) for profile in page.profiles],
+        "total": cached_payload["total"],
+        "total_pages": cached_payload["total_pages"],
+        "links": build_pagination_links(
+            "/api/profiles/search",
+            params.page,
+            params.limit,
+            cached_payload["total_pages"],
+            extra_query=f"q={params.q}",
+        ),
+        "data": cached_payload["data"],
     }
 
 
@@ -249,3 +287,4 @@ async def delete_profile(
 
     await db.delete(profile)
     await db.commit()
+    await invalidate_profile_query_cache()
