@@ -21,11 +21,14 @@ from app.services.auth import generate_tokens, get_github_user_info
 router = APIRouter()
 
 
-@router.get("/github")
+@router.get(
+    "/github",
+    description="Initiate GitHub OAuth flow by redirecting to GitHub's "
+    + "authorization page. Check /github/callback for the callback endpoint.",
+    response_class=RedirectResponse,
+)
 @auth_rate_limit
-async def github_login(
-    request: Request, settings: Settings = Depends(get_settings)
-):
+async def github_login(request: Request, settings: Settings = Depends(get_settings)):
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
     code_challenge = (
@@ -58,7 +61,13 @@ async def github_login(
     return response
 
 
-@router.get("/github/callback")
+@router.get(
+    "/github/callback",
+    response_class=RedirectResponse,
+    response_description="Redirect to frontend dashboard with tokens on success, "
+    + "or frontend login page with error query param on failure.",
+    description="GitHub OAuth callback endpoint.",
+)
 @auth_rate_limit
 async def github_callback(
     code: str,
