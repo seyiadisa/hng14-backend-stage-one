@@ -7,7 +7,13 @@ from sqlalchemy import select
 from app.models.enums import AgeGroup, Gender
 from app.models.profile import Profile
 from app.schemas.profile import ProfileListQueryParams
-from app.services.profile_service import apply_filters, apply_sorting, parse_name
+from app.services.profile_service import (
+    apply_filters,
+    apply_sorting,
+    build_pagination_links,
+    build_profile_page_query,
+    parse_name,
+)
 from app.services.utils import get_age_group
 
 
@@ -81,3 +87,46 @@ def test_apply_sorting_ignores_missing_sort_options():
     compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
 
     assert "ORDER BY" not in compiled
+
+
+def test_profile_page_query_applies_filters_pagination_and_default_ordering():
+    params = ProfileListQueryParams(country_id="ng", page=2, limit=25)
+
+    statement = build_profile_page_query(params)
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "profiles.country_id = 'NG'" in compiled
+    assert "ORDER BY profiles.created_at DESC, profiles.id DESC" in compiled
+    assert "LIMIT 25" in compiled
+    assert "OFFSET 25" in compiled
+
+
+def test_profile_page_query_keeps_explicit_sorting_with_stable_tiebreaker():
+    params = ProfileListQueryParams(sort_by="age", order="asc")
+
+    statement = build_profile_page_query(params)
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "ORDER BY profiles.age ASC, profiles.id DESC" in compiled
+
+
+def test_build_pagination_links_handles_first_middle_and_last_pages():
+    first_page = build_pagination_links("/api/profiles", 1, 10, 3)
+    middle_page = build_pagination_links("/api/profiles", 2, 10, 3)
+    last_page = build_pagination_links("/api/profiles", 3, 10, 3)
+
+    assert first_page == {
+        "self": "/api/profiles?page=1&limit=10",
+        "next": "/api/profiles?page=2&limit=10",
+        "prev": None,
+    }
+    assert middle_page == {
+        "self": "/api/profiles?page=2&limit=10",
+        "next": "/api/profiles?page=3&limit=10",
+        "prev": "/api/profiles?page=1&limit=10",
+    }
+    assert last_page == {
+        "self": "/api/profiles?page=3&limit=10",
+        "next": None,
+        "prev": "/api/profiles?page=2&limit=10",
+    }
