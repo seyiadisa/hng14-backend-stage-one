@@ -12,7 +12,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.limiter import profile_rate_limit
@@ -29,8 +29,8 @@ from app.schemas.profile import (
 from app.services.csv_parser import generate_csv
 from app.services.language_parser import parse_search_query
 from app.services.profile_service import (
-    apply_filters,
-    apply_sorting,
+    build_profile_page_query,
+    execute_profile_page_query,
     parse_name,
 )
 from app.services.utils import (
@@ -124,21 +124,9 @@ async def get_profiles(
     params: Annotated[ProfileListQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
-    count = select(func.count()).select_from(Profile)
-    count = await db.execute(apply_filters(count, params))
-    total = count.scalar_one()
+    page = await execute_profile_page_query(db, params, "/api/profiles")
 
-    offset = (params.page - 1) * params.limit
-
-    query = select(Profile)
-    query = apply_filters(query, params)
-    query = apply_sorting(query, params.sort_by, params.order)
-    query = query.offset(offset).limit(params.limit)
-
-    db_profiles = await db.execute(query)
-    profiles = db_profiles.scalars().all()
-
-    if not profiles:
+    if not page.profiles:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No profiles found matching the criteria",
@@ -148,22 +136,10 @@ async def get_profiles(
         "status": "success",
         "page": params.page,
         "limit": params.limit,
-        "total": total,
-        "total_pages": (total + params.limit - 1) // params.limit,
-        "links": {
-            "self": f"/api/profiles?page={params.page}&limit={params.limit}",
-            "next": (
-                None
-                if params.page == total // params.limit
-                else f"/api/profiles?page={params.page + 1}&limit={params.limit}"
-            ),
-            "prev": (
-                None
-                if params.page == 1
-                else f"/api/profiles?page={params.page - 1}&limit={params.limit}"
-            ),
-        },
-        "data": [serialize_profile_list_item(profile) for profile in profiles],
+        "total": page.total,
+        "total_pages": page.total_pages,
+        "links": page.links,
+        "data": [serialize_profile_list_item(profile) for profile in page.profiles],
     }
 
 
@@ -181,21 +157,16 @@ async def search_profiles_with_natural_language(
     db: AsyncSession = Depends(get_db),
 ):
     filters = parse_search_query(params.q)
+    filters.page = params.page
+    filters.limit = params.limit
+    page = await execute_profile_page_query(
+        db,
+        filters,
+        "/api/profiles/search",
+        extra_query=f"q={params.q}",
+    )
 
-    count = select(func.count()).select_from(Profile)
-    count = await db.execute(apply_filters(count, filters))
-    total = count.scalar_one()
-
-    offset = (params.page - 1) * params.limit
-
-    query = select(Profile)
-    query = apply_filters(query, filters)
-    query = query.offset(offset).limit(params.limit)
-
-    db_profiles = await db.execute(query)
-    profiles = db_profiles.scalars().all()
-
-    if not profiles:
+    if not page.profiles:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No profiles found matching the criteria",
@@ -205,25 +176,10 @@ async def search_profiles_with_natural_language(
         "status": "success",
         "page": params.page,
         "limit": params.limit,
-        "total": total,
-        "total_pages": (total + params.limit - 1) // params.limit,
-        "links": {
-            "self": "/api/profiles/search?"
-            + f"q={params.q}&page={params.page}&limit={params.limit}",
-            "next": (
-                None
-                if params.page == total // params.limit
-                else "/api/profiles/search?"
-                + f"q={params.q}&page={params.page + 1}&limit={params.limit}"
-            ),
-            "prev": (
-                None
-                if params.page == 1
-                else "/api/profiles/search?"
-                + f"q={params.q}&page={params.page - 1}&limit={params.limit}"
-            ),
-        },
-        "data": [serialize_profile_list_item(profile) for profile in profiles],
+        "total": page.total,
+        "total_pages": page.total_pages,
+        "links": page.links,
+        "data": [serialize_profile_list_item(profile) for profile in page.profiles],
     }
 
 
@@ -234,13 +190,7 @@ async def export_profiles_to_csv(
     params: Annotated[ProfileExportQueryParams, Query()],
     db: AsyncSession = Depends(get_db),
 ):
-    offset = (params.page - 1) * params.limit
-
-    query = select(Profile)
-    query = apply_filters(query, params)
-    query = apply_sorting(query, params.sort_by, params.order)
-    query = query.offset(offset).limit(params.limit)
-
+    query = build_profile_page_query(params)
     db_profiles = await db.execute(query)
     profiles = db_profiles.scalars().all()
 
