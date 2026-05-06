@@ -6,10 +6,12 @@ from fastapi import (
     APIRouter,
     Body,
     Depends,
+    File,
     HTTPException,
     Query,
     Request,
     Response,
+    UploadFile,
     status,
 )
 from sqlalchemy import select
@@ -28,6 +30,7 @@ from app.schemas.profile import (
 )
 from app.services.csv_parser import generate_csv
 from app.services.language_parser import parse_search_query
+from app.services.profile_ingestion import ingest_profile_csv
 from app.services.profile_service import (
     build_pagination_links,
     build_profile_page_query,
@@ -42,6 +45,7 @@ from app.services.query_normalization import profile_query_cache_key
 from app.services.utils import (
     fetch_json,
     get_age_group,
+    get_country_name,
     invalid_upstream,
     serialize_profile,
     serialize_profile_list_item,
@@ -102,6 +106,9 @@ async def create_profile(
     country_probability = top_country.get("probability")
     if country_id is None or country_probability is None:
         raise invalid_upstream("Nationalize")
+    country_name = get_country_name(country_id)
+    if country_name is None:
+        raise invalid_upstream("Nationalize")
 
     new_profile = Profile(
         name=name,
@@ -111,6 +118,7 @@ async def create_profile(
         age=age,
         age_group=get_age_group(age),
         country_id=country_id,
+        country_name=country_name,
         country_probability=country_probability,
     )
     db.add(new_profile)
@@ -122,6 +130,19 @@ async def create_profile(
         "status": "success",
         "data": serialize_profile(new_profile),
     }
+
+
+@router.post(
+    "/upload",
+    dependencies=[Depends(require_roles(Role.admin)), Depends(verify_csrf_token)],
+)
+@profile_rate_limit
+async def upload_profiles_csv(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    db: AsyncSession = Depends(get_db),
+):
+    return await ingest_profile_csv(db, file)
 
 
 @router.get("", dependencies=[Depends(require_roles(Role.analyst, Role.admin))])
