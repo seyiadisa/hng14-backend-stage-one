@@ -53,6 +53,23 @@ def test_parse_search_query_combines_supported_filters():
     assert params.country_id == "NG"
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Nigerian females between ages 20 and 45",
+        "Women aged 20-45 living in Nigeria",
+        "women ages 20 to 45 in Nigeria",
+    ],
+)
+def test_parse_search_query_supports_equivalent_range_and_location_phrases(query):
+    params = parse_search_query(query)
+
+    assert params.gender == Gender.female
+    assert params.country_id == "NG"
+    assert params.min_age == 20
+    assert params.max_age == 45
+
+
 def test_parse_search_query_uses_last_age_group():
     params = parse_search_query("adult senior females")
 
