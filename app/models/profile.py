@@ -2,7 +2,16 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Numeric, String, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    Index,
+    Numeric,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,6 +20,12 @@ from app.models.enums import AgeGroup, Gender
 
 class Profile(Base):
     __tablename__ = "profiles"
+    __table_args__ = (
+        Index("ix_profiles_country_gender_age", "country_id", "gender", "age"),
+        Index("ix_profiles_country_age_group", "country_id", "age_group"),
+        Index("ix_profiles_gender_age", "gender", "age"),
+        Index("ix_profiles_created_at_id", "created_at", "id"),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.uuidv7())
     name: Mapped[str] = mapped_column(nullable=False, index=True, unique=True)
