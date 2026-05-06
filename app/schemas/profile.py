@@ -51,6 +51,30 @@ class ProfileCreate(BaseModel):
     name: str
 
 
+class ProfileUploadResponse(BaseModel):
+    status: Literal["success"]
+    total_rows: int = Field(ge=0)
+    inserted: int = Field(ge=0)
+    skipped: int = Field(ge=0)
+    reasons: dict[str, int] = Field(default_factory=dict)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "success",
+                "total_rows": 50000,
+                "inserted": 48231,
+                "skipped": 1769,
+                "reasons": {
+                    "duplicate_name": 1203,
+                    "invalid_age": 312,
+                    "missing_fields": 254,
+                },
+            }
+        }
+    )
+
+
 class ProfileListItem(Profile):
     pass
 

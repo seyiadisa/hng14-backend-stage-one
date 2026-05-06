@@ -27,6 +27,7 @@ from app.schemas.profile import (
     ProfileExportQueryParams,
     ProfileListQueryParams,
     ProfileSearchQueryParams,
+    ProfileUploadResponse,
 )
 from app.services.csv_parser import generate_csv
 from app.services.language_parser import parse_search_query
@@ -134,7 +135,28 @@ async def create_profile(
 
 @router.post(
     "/upload",
+    response_model=ProfileUploadResponse,
     dependencies=[Depends(require_roles(Role.admin)), Depends(verify_csrf_token)],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "CSV processed successfully, with invalid rows skipped.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "total_rows": 50000,
+                        "inserted": 48231,
+                        "skipped": 1769,
+                        "reasons": {
+                            "duplicate_name": 1203,
+                            "invalid_age": 312,
+                            "missing_fields": 254,
+                        },
+                    }
+                }
+            },
+        }
+    },
 )
 @profile_rate_limit
 async def upload_profiles_csv(
@@ -167,9 +189,7 @@ async def get_profiles(
         cached_payload = {
             "total": page.total,
             "total_pages": page.total_pages,
-            "data": [
-                serialize_profile_list_item(profile) for profile in page.profiles
-            ],
+            "data": [serialize_profile_list_item(profile) for profile in page.profiles],
         }
         await profile_query_cache.set(cache_key, cached_payload)
 
@@ -219,9 +239,7 @@ async def search_profiles_with_natural_language(
         cached_payload = {
             "total": page.total,
             "total_pages": page.total_pages,
-            "data": [
-                serialize_profile_list_item(profile) for profile in page.profiles
-            ],
+            "data": [serialize_profile_list_item(profile) for profile in page.profiles],
         }
         await profile_query_cache.set(cache_key, cached_payload)
 
