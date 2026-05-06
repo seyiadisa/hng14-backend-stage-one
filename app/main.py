@@ -17,6 +17,7 @@ from app.core.errors import (
 )
 from app.core.limiter import limiter
 from app.db.base import Base
+from app.db.indexes import ensure_profile_indexes
 from app.db.session import engine
 
 logging.basicConfig(
@@ -30,6 +31,7 @@ logger = logging.getLogger("app.request")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_profile_indexes(conn)
 
     yield
 
