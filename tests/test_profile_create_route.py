@@ -6,6 +6,7 @@ from fastapi import Response
 from starlette.requests import Request
 
 from app.api.routes import profile as profile_routes
+from app.main import app
 from app.schemas.profile import ProfileCreate
 
 
@@ -69,3 +70,32 @@ def test_create_profile_sets_country_name(monkeypatch):
 
     monkeypatch.setattr(profile_routes, "fetch_json", fake_fetch_json)
     asyncio.run(scenario())
+
+
+def test_upload_profile_openapi_documents_expected_success_response():
+    app.openapi_schema = None
+    schema = app.openapi()
+    response = schema["paths"]["/api/profiles/upload"]["post"]["responses"]["200"]
+    example = response["content"]["application/json"]["example"]
+    response_schema = response["content"]["application/json"]["schema"]
+    schema_name = response_schema["$ref"].removeprefix("#/components/schemas/")
+    properties = schema["components"]["schemas"][schema_name]["properties"]
+
+    assert example == {
+        "status": "success",
+        "total_rows": 50000,
+        "inserted": 48231,
+        "skipped": 1769,
+        "reasons": {
+            "duplicate_name": 1203,
+            "invalid_age": 312,
+            "missing_fields": 254,
+        },
+    }
+    assert set(properties) == {
+        "status",
+        "total_rows",
+        "inserted",
+        "skipped",
+        "reasons",
+    }

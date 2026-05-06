@@ -5,46 +5,81 @@ from io import BytesIO
 from fastapi import UploadFile
 
 from app.models.enums import AgeGroup, Gender
+from app.services import profile_ingestion
 from app.services.profile_ingestion import ingest_profile_csv, validate_profile_csv_row
 
 
-class FakeScalarResult:
-    def __init__(self, values):
-        self.values = values
+class FakeCountResult:
+    def __init__(self, value):
+        self.value = value
 
-    def all(self):
-        return self.values
-
-
-class FakeSelectResult:
-    def __init__(self, values):
-        self.values = values
-
-    def scalars(self):
-        return FakeScalarResult(self.values)
+    def scalar_one(self):
+        return self.value
 
 
-class FakeInsertResult:
-    def __init__(self, rowcount):
-        self.rowcount = rowcount
+class FakeRawConnection:
+    def __init__(self, connection):
+        self.driver_connection = connection
 
 
-class FakeDB:
-    def __init__(self, existing_names=None, inserted_rowcount=None):
+class FakeConnection:
+    def __init__(self, existing_names=None):
         self.existing_names = set(existing_names or [])
-        self.inserted_rowcount = inserted_rowcount
-        self.insert_calls = 0
+        self.staging_rows = []
+        self.copy_calls = []
+        self.executed_sql = []
         self.commits = 0
+        self.rollbacks = 0
 
     async def execute(self, statement):
-        if getattr(statement, "is_select", False):
-            return FakeSelectResult(self.existing_names)
+        sql = str(statement)
+        self.executed_sql.append(sql)
 
-        self.insert_calls += 1
-        return FakeInsertResult(self.inserted_rowcount)
+        if "TRUNCATE TABLE" in sql:
+            self.staging_rows.clear()
+
+        if "SELECT COUNT(*) FROM inserted" in sql:
+            inserted = 0
+            for row in self.staging_rows:
+                name = row[0]
+                if name in self.existing_names:
+                    continue
+                self.existing_names.add(name)
+                inserted += 1
+            return FakeCountResult(inserted)
+
+        return FakeCountResult(0)
+
+    async def get_raw_connection(self):
+        return FakeRawConnection(self)
+
+    async def copy_records_to_table(self, table_name, records, columns):
+        copied_records = list(records)
+        self.copy_calls.append(
+            {
+                "table_name": table_name,
+                "records": copied_records,
+                "columns": columns,
+            }
+        )
+        self.staging_rows.extend(copied_records)
 
     async def commit(self):
         self.commits += 1
+
+    async def rollback(self):
+        self.rollbacks += 1
+
+    def in_transaction(self):
+        return False
+
+
+class FakeDB:
+    def __init__(self, existing_names=None):
+        self.connection_obj = FakeConnection(existing_names)
+
+    async def connection(self):
+        return self.connection_obj
 
 
 def valid_row(**overrides):
@@ -140,13 +175,24 @@ def test_validate_profile_csv_row_skips_short_rows_as_malformed():
     assert reason == "malformed_row"
 
 
-def test_ingest_profile_csv_returns_summary_for_mixed_rows():
-    async def scenario():
+def test_ingest_profile_csv_returns_summary_for_mixed_rows(monkeypatch):
+    async def scenario(monkeypatch):
+        invalidations = 0
+
+        async def fake_invalidate():
+            nonlocal invalidations
+            invalidations += 1
+
+        monkeypatch.setattr(
+            profile_ingestion,
+            "invalidate_profile_query_cache",
+            fake_invalidate,
+        )
         upload = UploadFile(
             file=BytesIO(csv_data.encode("utf-8")),
             filename="profiles.csv",
         )
-        db = FakeDB(existing_names={"existing"}, inserted_rowcount=1)
+        db = FakeDB(existing_names={"existing"})
 
         summary = await ingest_profile_csv(db, upload, chunk_size=2)
 
@@ -163,7 +209,16 @@ def test_ingest_profile_csv_returns_summary_for_mixed_rows():
                 "missing_fields": 1,
             },
         }
-        assert db.commits == 1
+        assert db.connection_obj.commits == 3
+        assert invalidations == 1
+        assert len(db.connection_obj.copy_calls) == 1
+        assert db.connection_obj.copy_calls[0]["table_name"].startswith(
+            "profile_upload_stage_"
+        )
+        assert all(
+            "VALUES" not in sql.upper()
+            for sql in db.connection_obj.executed_sql
+        )
 
     csv_data = "\n".join(
         [
@@ -175,6 +230,86 @@ def test_ingest_profile_csv_returns_summary_for_mixed_rows():
             "BadGender,unknown,0.98,31,NG,0.76",
             "BadCountry,female,0.98,31,XX,0.76",
             ",female,0.98,31,NG,0.76",
+        ]
+    )
+    asyncio.run(scenario(monkeypatch))
+
+
+def test_ingest_profile_csv_commits_and_invalidates_per_inserted_chunk(monkeypatch):
+    async def scenario():
+        invalidations = 0
+
+        async def fake_invalidate():
+            nonlocal invalidations
+            invalidations += 1
+
+        monkeypatch.setattr(
+            profile_ingestion,
+            "invalidate_profile_query_cache",
+            fake_invalidate,
+        )
+        upload = UploadFile(
+            file=BytesIO(csv_data.encode("utf-8")),
+            filename="profiles.csv",
+        )
+        db = FakeDB()
+
+        summary = await ingest_profile_csv(db, upload, chunk_size=2)
+
+        assert summary["inserted"] == 3
+        assert summary["skipped"] == 0
+        assert len(db.connection_obj.copy_calls) == 2
+        assert db.connection_obj.commits == 4
+        assert invalidations == 2
+
+    csv_data = "\n".join(
+        [
+            "name,gender,gender_probability,age,country_id,country_probability",
+            "Ada,female,0.98,31,NG,0.76",
+            "Grace,female,0.88,40,US,0.66",
+            "Linus,male,0.80,55,FI,0.60",
+        ]
+    )
+    asyncio.run(scenario())
+
+
+def test_ingest_profile_csv_counts_conflicts_without_invalidating_empty_chunk(
+    monkeypatch,
+):
+    async def scenario():
+        invalidations = 0
+
+        async def fake_invalidate():
+            nonlocal invalidations
+            invalidations += 1
+
+        monkeypatch.setattr(
+            profile_ingestion,
+            "invalidate_profile_query_cache",
+            fake_invalidate,
+        )
+        upload = UploadFile(
+            file=BytesIO(csv_data.encode("utf-8")),
+            filename="profiles.csv",
+        )
+        db = FakeDB(existing_names={"ada"})
+
+        summary = await ingest_profile_csv(db, upload, chunk_size=1)
+
+        assert summary == {
+            "status": "success",
+            "total_rows": 1,
+            "inserted": 0,
+            "skipped": 1,
+            "reasons": {"duplicate_name": 1},
+        }
+        assert db.connection_obj.commits == 3
+        assert invalidations == 0
+
+    csv_data = "\n".join(
+        [
+            "name,gender,gender_probability,age,country_id,country_probability",
+            "Ada,female,0.98,31,NG,0.76",
         ]
     )
     asyncio.run(scenario())
