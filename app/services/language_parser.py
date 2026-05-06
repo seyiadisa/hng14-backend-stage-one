@@ -37,8 +37,12 @@ AGE_GROUP_ALIASES = {
 GENDER_ALIASES = {
     "male": Gender.male,
     "males": Gender.male,
+    "man": Gender.male,
+    "men": Gender.male,
     "female": Gender.female,
     "females": Gender.female,
+    "woman": Gender.female,
+    "women": Gender.female,
 }
 
 COUNTRY_STOP_WORDS = {
@@ -46,12 +50,19 @@ COUNTRY_STOP_WORDS = {
     "adult",
     "adults",
     "and",
+    "aged",
+    "ages",
+    "between",
     "child",
     "children",
     "female",
     "females",
+    "in",
+    "living",
     "male",
     "males",
+    "man",
+    "men",
     "older",
     "over",
     "senior",
@@ -59,6 +70,9 @@ COUNTRY_STOP_WORDS = {
     "teenager",
     "teenagers",
     "than",
+    "to",
+    "woman",
+    "women",
     "young",
 }
 
@@ -112,6 +126,17 @@ def extract_age_bounds(query: str) -> tuple[int | None, int | None]:
         min_age = 16
         max_age = 24
 
+    age_range_patterns = (
+        r"\bbetween\s+(?:ages\s+)?(\d+)\s+and\s+(\d+)\b",
+        r"\baged\s+(\d+)\s+(\d+)\b",
+        r"\bages\s+(\d+)\s+(?:to\s+)?(\d+)\b",
+    )
+
+    for pattern in age_range_patterns:
+        match = re.search(pattern, query)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+
     minimum_age_patterns = (
         r"\babove\s+(\d+)\b",
         r"\bover\s+(\d+)\b",
@@ -141,10 +166,23 @@ def extract_age_bounds(query: str) -> tuple[int | None, int | None]:
 
 def extract_country_id(query: str) -> str | None:
     words = query.split()
-    if "from" not in words:
-        return None
+    markers = (("living", "in"), ("from",), ("in",))
+    marker_index = None
+    marker_length = 0
 
-    from_index = words.index("from") + 1
+    for marker in markers:
+        for index in range(len(words) - len(marker) + 1):
+            if tuple(words[index : index + len(marker)]) == marker:
+                marker_index = index
+                marker_length = len(marker)
+                break
+        if marker_index is not None:
+            break
+
+    if marker_index is None:
+        return extract_country_from_alias(query)
+
+    from_index = marker_index + marker_length
     country_tokens: list[str] = []
 
     for word in words[from_index:]:
@@ -164,3 +202,17 @@ def extract_country_id(query: str) -> str | None:
         return None
 
     return country.alpha_2
+
+
+def extract_country_from_alias(query: str) -> str | None:
+    for alias, country_name in sorted(
+        COUNTRY_ALIASES.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        if re.search(rf"\b{re.escape(alias)}\b", query):
+            try:
+                country = pycountry.countries.search_fuzzy(country_name)[0]
+            except LookupError:
+                return None
+            return country.alpha_2
+
+    return None
