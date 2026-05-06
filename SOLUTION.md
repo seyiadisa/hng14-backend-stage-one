@@ -137,8 +137,8 @@ other profile write endpoints.
 
 The ingestion path streams the uploaded file as UTF-8 text and parses it with
 Python's CSV reader. It does not load the full file into memory. Valid rows are
-accumulated into chunks of `5,000`, then inserted with one bulk PostgreSQL
-statement per chunk.
+accumulated into chunks of `5,000`, then copied through PostgreSQL with asyncpg
+`COPY`.
 
 Required CSV columns are:
 
@@ -173,14 +173,22 @@ Rows are skipped for:
 | `duplicate_name` | Name already exists or repeats in the upload. |
 | `malformed_row` | Wrong CSV column count or broken decoded text. |
 
-### Bulk writes and idempotency
+### COPY writes and idempotency
 
-The service checks existing names once per chunk and inserts remaining rows with
-`INSERT ... ON CONFLICT (name) DO NOTHING`. This avoids row-by-row inserts and
-keeps concurrent uploads correct under the existing unique `name` constraint.
+For each upload, the service creates a unique short-lived PostgreSQL staging
+table. Each validated chunk is copied into that table with asyncpg `COPY`, then
+merged into `profiles_scripts` using
+`INSERT ... SELECT ... ON CONFLICT (name) DO NOTHING`. The staging table is
+truncated between chunks and dropped at the end of the upload.
+
+This avoids row-by-row inserts and avoids huge `INSERT ... VALUES` statements
+with tens of thousands of bind parameters. Duplicate names are still handled by
+the existing unique `name` constraint, so retries and concurrent uploads remain
+idempotent.
 
 Each chunk commits independently. If an upload fails midway, previously
-committed chunks remain, which matches the partial-success requirement. After a
+committed chunks remain, which matches the partial-success requirement. If the
+same file is retried, already inserted names are skipped as duplicates. After a
 chunk inserts rows, the profile query cache is invalidated so future list/search
 requests do not serve stale data.
 
@@ -189,5 +197,7 @@ requests do not serve stale data.
 The upload runs inside the API request instead of using a background worker.
 That keeps the implementation practical for the stage constraints and avoids
 new infrastructure. The trade-off is that very large uploads occupy one request
-for longer, but chunked validation and bulk inserts keep memory usage bounded
-and reduce database round trips.
+for longer, but chunked validation and `COPY` keep memory usage bounded and
+avoid expensive per-row database work. A small in-process semaphore limits CSV
+uploads to `2` concurrent imports so large files do not exhaust the database
+pool.
