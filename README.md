@@ -10,6 +10,13 @@ The system has evolved from a simple name-classification service into a
 scalable backend application designed for concurrent web and CLI clients,
 read-heavy traffic, remote database latency, and large CSV uploads.
 
+## Live System
+
+- Production API: `https://insighta-labs.fastapicloud.dev/`
+- Frontend application: `https://insighta-lab.vercel.app/`
+- Frontend repository: `https://github.com/seyiadisa/hng-insighta-web`
+- CLI repository: `https://github.com/seyiadisa/hng-insighta-cli`
+
 ## Features
 
 - GitHub OAuth login with access and refresh tokens stored in secure cookies.
@@ -105,7 +112,6 @@ read-heavy traffic, remote database latency, and large CSV uploads.
 |   `-- workflows
 |       `-- ci.yml
 |-- .python-version
-|-- PLAN.md
 |-- SOLUTION.md
 |-- pyproject.toml
 |-- uv.lock
@@ -193,9 +199,9 @@ canonical query normalization, cache behavior, CSV generation, CSV ingestion row
 validation, upload summaries, serialization, token helpers, and auth dependency
 checks without requiring a live database.
 
-## CI
+## CI/CD
 
-GitHub Actions runs on pull requests targeting `main`.
+GitHub Actions runs on pull requests targeting `main` and pushes to `main`.
 
 The workflow in `.github/workflows/ci.yml`:
 
@@ -205,6 +211,12 @@ The workflow in `.github/workflows/ci.yml`:
 - installs dependencies with `uv sync --locked`
 - runs Ruff linting
 - runs pytest
+- deploys to FastAPI Cloud after lint and tests pass
+
+The deploy job uses these repository secrets:
+
+- `FASTAPI_CLOUD_TOKEN`
+- `FASTAPI_CLOUD_APP_ID`
 
 ## Authentication and Request Requirements
 
