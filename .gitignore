@@ -12,3 +12,6 @@ wheels/
 .env
 *.db
 *.docx
+scripts
+tmp
+PLAN.md
