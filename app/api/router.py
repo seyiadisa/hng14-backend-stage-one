@@ -16,4 +16,4 @@ router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 
 @router.get("/")
 async def root():
-    return {"message": "Welcome to the HNG 14 Backend API!"}
+    return {"message": "Welcome to the Insighta Labs+ API!"}
