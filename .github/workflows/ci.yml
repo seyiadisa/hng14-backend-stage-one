@@ -19,7 +19,7 @@ jobs:
       GITHUB_CLIENT_SECRET: test-client-secret
       GITHUB_REDIRECT_URI: http://localhost/auth/github/callback
       FRONTEND_URL: http://localhost:3000
-      FRONTEND_REDIRECT_URI: http://localhost:3000/auth/callback
+      FRONTEND_REDIRECT_URI: http://localhost:3000
       ACCESS_TOKEN_EXPIRE_MINUTES: "15"
       REFRESH_TOKEN_EXPIRE_MINUTES: "1440"
       JWT_SECRET_KEY: test-secret-key-with-at-least-32-bytes
